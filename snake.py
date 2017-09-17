@@ -5,8 +5,11 @@ import threading
 import time
 import random
 
+from collections import deque
+
 
 # TODO 
+# solve no path issue in shortest path search
 # press to speed up
 
 snake_char = " "
@@ -24,6 +27,17 @@ def draw_fruit(screen, fruit):
     screen.addch(fruit[0], fruit[1]*2, fruit_char, curses.color_pair(fruit_color) | curses.A_REVERSE)
     screen.addch(fruit[0], fruit[1]*2+1, fruit_char, curses.color_pair(fruit_color) | curses.A_REVERSE)
 
+def get_next_node(node, direction):
+    (h, w) = node
+    if direction == curses.KEY_UP:
+        return (h-1, w)
+    elif direction == curses.KEY_DOWN:
+        return (h+1, w)
+    elif direction == curses.KEY_LEFT:
+        return (h, w-1)
+    elif direction == curses.KEY_RIGHT:
+        return (h, w+1)
+
 class Snake:
     def __init__(self, max_width, max_height):
         self.nodes = [(0, 2), (0, 1), (0, 0)]
@@ -35,6 +49,8 @@ class Snake:
         for node in self.nodes:
             self.node_set.add(node)
 
+    def get_head(self):
+        return self.nodes[0]
     def get_nodes(self):
         return self.nodes
 
@@ -54,15 +70,7 @@ class Snake:
             self.dead = True
 
     def get_new_head(self, direction):
-        (h, w) = self.nodes[0]
-        if direction == curses.KEY_UP:
-            return (h-1, w)
-        elif direction == curses.KEY_DOWN:
-            return (h+1, w)
-        if direction == curses.KEY_LEFT:
-            return (h, w-1)
-        if direction == curses.KEY_RIGHT:
-            return (h, w+1)
+        return get_next_node(self.nodes[0], direction)
 
     def try_set_direction(self, direction):
         new_head = self.get_new_head(direction)
@@ -85,16 +93,20 @@ def choose_next_fruit(all_cell, snake):
         return None
     return random.choice(empty_cell)
         
-def main(screen):
+def main(screen, player_type):
     curses.curs_set(0)
     curses.start_color()
     curses.use_default_colors()
     curses.init_pair(snake_head_color, curses.COLOR_RED, -1)
     curses.init_pair(fruit_color, curses.COLOR_GREEN, -1)
 
+    player = None
+    if player_type == "human":
+        player = Player(screen)
+    elif player_type == "ai":
+        player = AIPlayer(screen)
     (max_height, max_width) = screen.getmaxyx()
     snake = Snake(max_width, max_height)
-    key = [None]
     all_cell = set()
     for i in xrange(0, max_height):
         for j in xrange(0, max_width/2):
@@ -107,7 +119,7 @@ def main(screen):
 
     while True:
         new_direction = None
-        key = screen.getch()
+        key = player.get_input(snake, fruit)
         if key == curses.KEY_UP or key == curses.KEY_DOWN or key == curses.KEY_LEFT or key == curses.KEY_RIGHT:
             new_direction = key
         if new_direction != None:
@@ -128,9 +140,60 @@ def main(screen):
         if snake.is_dead():
             screen.addstr(max_height/2, max_width/2, "GAME OVER")
             break
-        time.sleep(0.1)
+        time.sleep(0.01)
 
     screen.nodelay(0)
     screen.getch()
 
-curses.wrapper(main)
+# human player
+class Player:
+    def __init__(self, screen):
+        self.screen = screen
+    def get_input(self, snake, fruit):
+        return self.screen.getch()
+
+class AIPlayer(Player):
+    def __init__(self, screen):
+        self.screen = screen
+        (self.max_height, self.max_width) = screen.getmaxyx()
+        self.move_stack = []
+        self.all_directions = [curses.KEY_UP, curses.KEY_DOWN, curses.KEY_LEFT, curses.KEY_RIGHT]
+    def get_input(self, snake, fruit):
+        if len(self.move_stack) == 0:
+            self.find_path(snake, fruit)
+        return self.move_stack.pop()
+
+    def find_path(self, snake, fruit):
+        all_cell = set()
+        for i in xrange(0, self.max_height):
+            for j in xrange(0, self.max_width/2):
+                all_cell.add((i, j))
+        to_visit = all_cell - snake.get_node_set()
+        frontier = deque()
+        frontier.append(snake.get_head())
+        frontier_path = {snake.get_head():[]}
+        self.find_shortest_path(fruit, to_visit, frontier, frontier_path)
+
+    def find_shortest_path(self, fruit, to_visit, frontier, frontier_path):
+        while frontier:
+            node = frontier.popleft()
+            path = frontier_path[node]
+            for direction in self.all_directions:
+                next_node = get_next_node(node, direction)
+                if not next_node in to_visit:
+                    continue
+                new_path = path + [direction]
+                if next_node == fruit:
+                    new_path.reverse()
+                    self.move_stack = new_path
+                    return
+                to_visit.remove(next_node)
+                frontier.append(next_node)
+                frontier_path[next_node] = new_path
+            del frontier_path[node]
+        self.screen.nodelay(0)
+        self.screen.addstr(self.max_height/2, self.max_width/2, "NO PATH")
+        self.screen.getch()
+
+
+curses.wrapper(main, "ai")
