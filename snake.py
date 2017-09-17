@@ -24,12 +24,6 @@ def draw_fruit(screen, fruit):
     screen.addch(fruit[0], fruit[1]*2, fruit_char, curses.color_pair(fruit_color) | curses.A_REVERSE)
     screen.addch(fruit[0], fruit[1]*2+1, fruit_char, curses.color_pair(fruit_color) | curses.A_REVERSE)
 
-def detect_input(screen, direction, stop_signal, screen_lock):
-    while not stop_signal[0]:
-        key = screen.getch()
-        if key == curses.KEY_UP or key == curses.KEY_DOWN or key == curses.KEY_LEFT or key == curses.KEY_RIGHT:
-            direction[0] = key
-
 class Snake:
     def __init__(self, max_width, max_height):
         self.nodes = [(0, 2), (0, 1), (0, 0)]
